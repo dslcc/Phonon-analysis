@@ -1,0 +1,103 @@
+dimension	3
+units		metal
+boundary	p p p
+atom_style	charge
+box         tilt large
+read_data	data.file
+
+neighbor          2.0 nsq
+neigh_modify      every 1 delay 5 check yes
+
+variable          Teq equal 300
+
+kspace_style pppm  1.0e-5
+pair_style        hybrid/overlay airebo 3.0 0 0  coul/long 15.0  buck 15.0  morse 15.0  lj/cut 15.0
+pair_coeff        * * airebo CH.airebo C NULL NULL
+pair_coeff        2 2 coul/long
+pair_coeff        2 3 coul/long
+pair_coeff        3 3 coul/long
+pair_coeff        2 2 buck 139349.01   0.207865  171.08216  
+pair_coeff        3 3 buck 1388.773    0.3626    175        
+pair_coeff        2 3 buck 412.54996   0.298512  0          
+pair_coeff        2 3 morse 0.44093385   2.5651  1.91283    
+pair_coeff        1 2 lj/cut 0.009064621 3.66016639  12.81058237     
+pair_coeff        1 3 lj/cut 0.003446682 3.27076330  11.44767155     
+
+
+region            1    block  EDGE EDGE EDGE EDGE   34.5  36.0    units box   
+region            2    block  EDGE EDGE EDGE EDGE   29.3  36.0    units box   
+region            3    block  EDGE EDGE EDGE EDGE   26.5  36.0    units box   
+region            4    block  EDGE EDGE EDGE EDGE   23.4  36.0    units box   
+region            5    block  EDGE EDGE EDGE EDGE   0.00  2.50    units box   
+
+group    GRA      type 1
+group    Ga2O3    type 2 3
+group    layer1   region 1
+group    layer2   region 2
+group    layer3   region 3
+group    layer4   region 4
+group    fixed    region 5
+group    body     subtract Ga2O3 fixed
+group    free     union GRA body
+
+dump		1 all custom 10 structure.minimize id type x y z
+fix		    1 all box/relax tri 0.0        
+min_style	cg                              
+minimize	0.0 1.0e-8 1000000 1000000      
+undump	    1
+unfix		1
+
+#optimize at T=300K
+velocity	  GRA   create ${Teq} 34872873 mom yes rot yes dist gaussian
+velocity	  body  create ${Teq} 34872873 mom yes rot yes dist gaussian
+velocity      fixed set 0.0 0.0 0.0 units box
+
+fix           f1 fixed setforce 0.0 0.0 0.0
+
+timestep      0.0005
+thermo        10000
+
+thermo_style  custom  step temp etotal 
+
+dump		2 all custom 50000 structure.relaxing id type x y z
+dump        3 all xyz 50000 GRA-Ga2O3.xyz
+dump_modify 3 element C Ga O   
+
+
+fix         nvt1 GRA  nvt temp ${Teq} ${Teq} 0.05 drag 0.2
+fix         nvt2 body nvt temp ${Teq} ${Teq} 0.05 drag 0.2
+
+run  1000000
+
+unfix    nvt1
+unfix    nvt2
+
+
+fix         nve free nve
+
+run  1000000
+
+reset_timestep 0
+
+
+thermo 1
+compute    GRA_vacf  GRA  vacf
+compute    layer2_vacf  layer2  vacf
+compute    layer3_vacf  layer3  vacf
+compute    layer4_vacf  layer4  vacf
+compute    body_vacf  body  vacf
+compute    free_vacf  free  vacf
+
+thermo_style custom step temp &
+c_GRA_vacf[1] c_GRA_vacf[2] c_GRA_vacf[3] c_GRA_vacf[4] &
+c_layer2_vacf[1] c_layer2_vacf[2] c_layer2_vacf[3] c_layer2_vacf[4] &
+c_layer3_vacf[1] c_layer3_vacf[2] c_layer3_vacf[3] c_layer3_vacf[4] &
+c_layer4_vacf[1] c_layer4_vacf[2] c_layer4_vacf[3] c_layer4_vacf[4] &
+c_body_vacf[1] c_body_vacf[2] c_body_vacf[3] c_body_vacf[4] &
+c_free_vacf[1] c_free_vacf[2] c_free_vacf[3] c_free_vacf[4]
+
+log   VACF.log
+
+run  200000
+
+print	"Job done."
